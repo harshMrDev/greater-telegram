@@ -5,8 +5,12 @@ from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 import yt_dlp
 
+# --- Environment Variables (set these in Railway) ---
+API_ID = int(os.environ.get("API_ID"))
+API_HASH = os.environ.get("API_HASH")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
+# --- YouTube Regex and Helpers ---
 YOUTUBE_REGEX = re.compile(
     r'(https?://(?:www\.)?(?:youtube\.com/(?:watch\?v=|shorts/)|youtu\.be/)[\w\-\_\?&=]+)'
 )
@@ -66,7 +70,14 @@ async def download_youtube(link, mode, cookies_file=None):
             return safe_filename if os.path.exists(safe_filename) else filename
     return await asyncio.to_thread(get_stream)
 
-app = Client("youtube_downloader_bot", bot_token=BOT_TOKEN)
+# --- Pyrogram App ---
+app = Client(
+    "youtube_downloader_bot",
+    api_id=API_ID,
+    api_hash=API_HASH,
+    bot_token=BOT_TOKEN,
+)
+
 user_sessions = {}
 
 @app.on_message(filters.command("start"))
@@ -157,8 +168,8 @@ async def process_and_send(client, message, links, mode):
                 await message.reply("❌ File is empty. Download failed!")
                 os.remove(file_path)
                 continue
-            if size > 2 * 1024 * 1024 * 1024:
-                await message.reply("❌ File too large! Max 2GB allowed.")
+            if size > 4 * 1024 * 1024 * 1024:
+                await message.reply("❌ File too large! Max 4GB allowed.")
                 os.remove(file_path)
                 continue
             await message.reply_document(file_path)
