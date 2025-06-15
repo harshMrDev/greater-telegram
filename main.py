@@ -5,12 +5,10 @@ from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 import yt_dlp
 
-# --- Environment Variables (set these in Railway) ---
 API_ID = int(os.environ.get("API_ID"))
 API_HASH = os.environ.get("API_HASH")
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
-# --- YouTube Regex and Helpers ---
 YOUTUBE_REGEX = re.compile(
     r'(https?://(?:www\.)?(?:youtube\.com/(?:watch\?v=|shorts/)|youtu\.be/)[\w\-\_\?&=]+)'
 )
@@ -70,7 +68,6 @@ async def download_youtube(link, mode, cookies_file=None):
             return safe_filename if os.path.exists(safe_filename) else filename
     return await asyncio.to_thread(get_stream)
 
-# --- Pyrogram App ---
 app = Client(
     "youtube_downloader_bot",
     api_id=API_ID,
@@ -86,7 +83,7 @@ async def start(client, message: Message):
         "🎉 *YouTube Downloader Bot*\n\n"
         "Send a YouTube link (or a .txt file with links).\n"
         "I'll ask for Audio/Video and, if video, ask for quality.\n"
-        "Files up to 2GB supported.",
+        "Files up to 4GB supported.",
         parse_mode="markdown"
     )
 
@@ -95,7 +92,7 @@ async def help_command(client, message: Message):
     await message.reply(
         "Send a YouTube link (or a .txt file with links).\n"
         "I'll ask if you want audio or video, then for video: the quality (360p/480p/1080p).\n"
-        "Files up to 2GB are supported.",
+        "Files up to 4GB are supported.",
         parse_mode="markdown"
     )
 
@@ -177,7 +174,7 @@ async def process_and_send(client, message, links, mode):
             await msg.delete()
         except Exception as e:
             await message.reply(
-                f"❌ Failed for {link}:\n`{str(e)}`", parse_mode='Markdown'
+                f"❌ Failed for {link}:\n`{str(e)}`", parse_mode='markdown'
             )
 
 if __name__ == "__main__":
