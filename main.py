@@ -1,6 +1,5 @@
 import os
 import re
-import m3u8
 import aiohttp
 import aiofiles
 import asyncio
