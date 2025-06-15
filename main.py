@@ -84,7 +84,7 @@ async def start(client, message: Message):
         "Send a YouTube link (or a .txt file with links).\n"
         "I'll ask for Audio/Video and, if video, ask for quality.\n"
         "Files up to 4GB supported.",
-        parse_mode="markdown"
+        parse_mode="Markdown"
     )
 
 @app.on_message(filters.command("help"))
@@ -93,7 +93,7 @@ async def help_command(client, message: Message):
         "Send a YouTube link (or a .txt file with links).\n"
         "I'll ask if you want audio or video, then for video: the quality (360p/480p/1080p).\n"
         "Files up to 4GB are supported.",
-        parse_mode="markdown"
+        parse_mode="Markdown"
     )
 
 @app.on_message(filters.text | filters.document)
@@ -174,7 +174,7 @@ async def process_and_send(client, message, links, mode):
             await msg.delete()
         except Exception as e:
             await message.reply(
-                f"❌ Failed for {link}:\n`{str(e)}`", parse_mode='markdown'
+                f"❌ Failed for {link}:\n`{str(e)}`", parse_mode='Markdown'
             )
 
 if __name__ == "__main__":
