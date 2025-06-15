@@ -3,9 +3,8 @@ import re
 import asyncio
 from pyrogram import Client, filters
 from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
-import yt_dlp
 from pyrogram.enums import ParseMode
-
+import yt_dlp
 
 API_ID = int(os.environ.get("API_ID"))
 API_HASH = os.environ.get("API_HASH")
@@ -21,12 +20,34 @@ def extract_youtube_links(text):
 def sanitize_filename(name):
     return re.sub(r'[^a-zA-Z0-9_\-\.]', '_', name)
 
-async def download_youtube(link, mode, cookies_file=None):
+def make_sexy_progress_bar(downloaded, total, speed=None, eta=None, bar_length=18):
+    """Return a visually-appealing progress bar string for Telegram."""
+    if total == 0:
+        return "🟡 Starting..."
+    percent = downloaded / total
+    filled_len = int(bar_length * percent)
+    bar = "🟩" * filled_len + "⬜" * (bar_length - filled_len)
+    percent_text = f"{percent*100:5.1f}%"
+    size_text = f"{downloaded/1048576:.1f}MB / {total/1048576:.1f}MB"
+    speed_text = f"🚀 {speed/1048576:.2f}MB/s" if speed else ""
+    eta_text = f"⏳ {int(eta)}s left" if eta else ""
+    extras = "  ".join(x for x in [speed_text, eta_text] if x)
+    fun = "🔥" if speed and speed > 2*1048576 else ""
+    return (
+        f"*Downloading:*\n"
+        f"{bar} `{percent_text}` {fun}\n"
+        f"`{size_text}`\n"
+        f"{extras}"
+    )
+
+async def download_youtube(link, mode, cookies_file=None, progress_callback=None):
     def get_stream():
         outtmpl = "/tmp/%(title).60s.%(ext)s"
-        ydl_opts = {}
+        ydl_opts = {
+            "progress_hooks": [progress_callback] if progress_callback else [],
+        }
         if mode == 'audio':
-            ydl_opts = {
+            ydl_opts.update({
                 'format': 'bestaudio/best',
                 'outtmpl': outtmpl,
                 'postprocessors': [{
@@ -34,25 +55,25 @@ async def download_youtube(link, mode, cookies_file=None):
                     'preferredcodec': 'mp3',
                     'preferredquality': '192',
                 }],
-            }
+            })
         elif mode == 'video_360':
-            ydl_opts = {
+            ydl_opts.update({
                 'format': 'bestvideo[height<=360]+bestaudio/best[height<=360]/best[height<=360]',
                 'outtmpl': outtmpl,
                 'merge_output_format': 'mp4',
-            }
+            })
         elif mode == 'video_480':
-            ydl_opts = {
+            ydl_opts.update({
                 'format': 'bestvideo[height<=480]+bestaudio/best[height<=480]/best[height<=480]',
                 'outtmpl': outtmpl,
                 'merge_output_format': 'mp4',
-            }
+            })
         elif mode == 'video_1080':
-            ydl_opts = {
+            ydl_opts.update({
                 'format': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best[height<=1080]',
                 'outtmpl': outtmpl,
                 'merge_output_format': 'mp4',
-            }
+            })
         else:
             raise Exception("Invalid mode")
         if cookies_file and os.path.exists(cookies_file):
@@ -86,7 +107,7 @@ async def start(client, message: Message):
         "Send a YouTube link (or a .txt file with links).\n"
         "I'll ask for Audio/Video and, if video, ask for quality.\n"
         "Files up to 4GB supported.",
-         parse_mode=ParseMode.MARKDOWN
+        parse_mode=ParseMode.MARKDOWN
     )
 
 @app.on_message(filters.command("help"))
@@ -95,7 +116,7 @@ async def help_command(client, message: Message):
         "Send a YouTube link (or a .txt file with links).\n"
         "I'll ask if you want audio or video, then for video: the quality (360p/480p/1080p).\n"
         "Files up to 4GB are supported.",
-         parse_mode=ParseMode.MARKDOWN
+        parse_mode=ParseMode.MARKDOWN
     )
 
 @app.on_message(filters.text | filters.document)
@@ -157,8 +178,31 @@ async def process_and_send(client, message, links, mode):
     cookies_file = 'cookies.txt' if os.path.exists('cookies.txt') else None
     for link in links:
         try:
-            msg = await message.reply(f"🎯 Processing: {link}")
-            file_path = await download_youtube(link, mode, cookies_file)
+            progress_msg = await message.reply(f"🎯 Processing: {link}")
+            last_percent = -1  # To avoid unnecessary edits
+
+            async def edit_progress(d):
+                if d['status'] == 'downloading':
+                    total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
+                    downloaded = d.get('downloaded_bytes', 0)
+                    speed = d.get('speed')
+                    eta = d.get('eta')
+                    if total and downloaded:
+                        percent = int(100 * downloaded / total)
+                        nonlocal last_percent
+                        if percent != last_percent:
+                            last_percent = percent
+                            bar = make_sexy_progress_bar(downloaded, total, speed, eta)
+                            await progress_msg.edit_text(
+                                bar + f"\n[`{link}`]",
+                                parse_mode=ParseMode.MARKDOWN,
+                                disable_web_page_preview=True
+                            )
+
+            def progress_hook(d):
+                asyncio.run_coroutine_threadsafe(edit_progress(d), client.loop)
+
+            file_path = await download_youtube(link, mode, cookies_file, progress_hook)
             if not os.path.exists(file_path):
                 await message.reply("❌ Download failed, file not found!")
                 continue
@@ -171,12 +215,13 @@ async def process_and_send(client, message, links, mode):
                 await message.reply("❌ File too large! Max 4GB allowed.")
                 os.remove(file_path)
                 continue
+            await progress_msg.edit_text("✅ Uploading to Telegram...", parse_mode=ParseMode.MARKDOWN)
             await message.reply_document(file_path)
             os.remove(file_path)
-            await msg.delete()
+            await progress_msg.delete()
         except Exception as e:
             await message.reply(
-                f"❌ Failed for {link}:\n`{str(e)}`", parse_mode=ParseMode.MARKDOWNS
+                f"❌ Failed for {link}:\n`{str(e)}`", parse_mode=ParseMode.MARKDOWN
             )
 
 if __name__ == "__main__":
